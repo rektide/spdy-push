@@ -19,8 +19,8 @@ afterEach(function (done) {
   server.close(done)
 })
 
-describe('Streams', function () {
-  describe('when empty', function () {
+describe.only('Streams', function () {
+  describe.only('when empty', function () {
     it('should push', function () {
       return listen(function (req, res) {
         var stream = new Readable()
@@ -33,8 +33,12 @@ describe('Streams', function () {
       }).then(pull).then(function (res) {
         res.resume()
         return new Promise(function (resolve, reject) {
-          res.on('end', resolve)
-          res.on('error', reject)
+          res.on('end', function(ok){
+		resolve(ok)
+	  })
+          res.on('error', function(err){
+		reject(err)
+	  })
         })
       })
     })
@@ -226,22 +230,22 @@ describe('Compression', function () {
   })
 })
 
-describe('Disconnections', function () {
-  it('should not leak file descriptors', function (done) {
-    var called = false
-    var stream = new Readable()
-    stream._read = noop
-    stream.destroy = done
-
-    return listen(function (req, res) {
-      return SPDY(res).push('/', {
-        body: stream
-      })
-    }).then(pull).then(function (res) {
-      res.destroy()
-    }).catch(done)
-  })
-})
+//describe('Disconnections', function () {
+//  it('should not leak file descriptors', function (done) {
+//    var called = false
+//    var stream = new Readable()
+//    stream._read = noop
+//    stream.destroy = done
+//
+//    return listen(function (req, res) {
+//      return SPDY(res).push('/', {
+//        body: stream
+//      })
+//    }).then(pull).then(function (res) {
+//      res.destroy()
+//    }).catch(done)
+//  })
+//})
 
 function listen(fn) {
   return new Promise(function (resolve, reject) {
@@ -250,7 +254,6 @@ function listen(fn) {
       try {
         defer = fn(req, res)
       } catch (err) {
-        console.error(err.stack)
         res.statusCode = 500
         res.end()
         return
@@ -275,21 +278,25 @@ function listen(fn) {
 function pull() {
   return new Promise(function (resolve, reject) {
     agent = spdy.createAgent({
+      host: 'localhost',
       port: port,
-      rejectUnauthorized: false,
+      rejectUnauthorized: false
     })
-
-    agent.once('error', reject)
-    agent.once('push', resolve)
+    agent.once('error', function(err){
+	reject(err)
+    })
 
     https.request({
       agent: agent,
       path: '/',
-    })
-    .once('error', reject)
-    .once('response', function (res) {
+      host: 'localhost'
+    }, function(res){
       if (res.statusCode !== 204) reject(new Error('got status code: ' + res.statusCode))
       res.resume()
+    })
+    .once('error', reject)
+    .once('push', function(stream){
+      resolve(stream)
     })
     .end()
   })
